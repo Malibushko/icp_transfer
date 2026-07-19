@@ -43,6 +43,28 @@ void check(bool ok, const char* what, uint64_t seq) {
 }  // namespace
 
 int main() {
+    // CRC32C known-answer test (RFC 3720 check value) and cross-check of the
+    // optimized path against the portable table-driven implementation on
+    // lengths around every block-size boundary.
+    if (ipc::crc32c("123456789", 9) != 0xE3069283u) {
+        std::fprintf(stderr, "FAIL: crc32c known-answer test\n");
+        return 1;
+    }
+    {
+        std::vector<uint8_t> buf(70000);
+        std::mt19937_64 rng(1);
+        for (auto& b : buf) b = static_cast<uint8_t>(rng());
+        for (size_t len : {0, 1, 7, 8, 9, 255, 256, 767, 768, 769, 4096,
+                           8191, 8192, 24575, 24576, 24577, 65536, 70000}) {
+            if (ipc::crc32c(buf.data(), len) != ipc::crc32c_sw(buf.data(), len) ||
+                ipc::crc32c(buf.data() + 1, len ? len - 1 : 0) !=
+                    ipc::crc32c_sw(buf.data() + 1, len ? len - 1 : 0)) {
+                std::fprintf(stderr, "FAIL: crc32c mismatch at len=%zu\n", len);
+                return 1;
+            }
+        }
+    }
+
     auto ring = ipc::SpscRing::create("/pkt_ring_selftest", kRingBytes);
 
     std::thread producer([&] {
