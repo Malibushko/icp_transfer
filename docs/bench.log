@@ -1,0 +1,24 @@
+$ uname -srm && nproc && grep 'model name' /proc/cpuinfo | head -1
+Linux 6.18.33.2-microsoft-standard-WSL2 x86_64
+24
+model name	: 12th Gen Intel(R) Core(TM) i9-12900
+
+$ taskset -c 4 ./build/consumer &
+$ taskset -c 2 ./build/producer 4096 /pkt_ring 8   # payload 4096 B, ring 8 MiB, ~10 s
+
+[consumer] waiting for producer on '/pkt_ring', pid 259
+[consumer] SIGUSR1 or any key: pause/resume, 'q' or Ctrl+C: quit
+[producer] ring '/pkt_ring' (8 MiB), payload 4096 B, pid 262
+[producer] SIGUSR1 or any key: pause/resume, 'q' or Ctrl+C: quit
+[consumer] total=     5072131 |     5071919 pkt/s |  20774.58 MB/s (20.775 GB/s) | crc_err=0 | seq_gap=0
+[consumer] total=    10250278 |     5177869 pkt/s |  21208.55 MB/s (21.209 GB/s) | crc_err=0 | seq_gap=0
+[consumer] total=    15364364 |     5113540 pkt/s |  20945.06 MB/s (20.945 GB/s) | crc_err=0 | seq_gap=0
+[consumer] total=    20546571 |     5182034 pkt/s |  21225.61 MB/s (21.226 GB/s) | crc_err=0 | seq_gap=0
+[consumer] total=    25642852 |     5095308 pkt/s |  20870.38 MB/s (20.870 GB/s) | crc_err=0 | seq_gap=0
+[consumer] total=    30834372 |     5190746 pkt/s |  21261.29 MB/s (21.261 GB/s) | crc_err=0 | seq_gap=0
+[consumer] total=    36016354 |     5181871 pkt/s |  21224.95 MB/s (21.225 GB/s) | crc_err=0 | seq_gap=0
+[consumer] total=    41190135 |     5173276 pkt/s |  21189.74 MB/s (21.190 GB/s) | crc_err=0 | seq_gap=0
+[consumer] total=    46274484 |     5083464 pkt/s |  20821.87 MB/s (20.822 GB/s) | crc_err=0 | seq_gap=0
+[producer] done: 51172836 packets, 209603.9 MB payload in 9.9 s
+[consumer] total=    51172836 |     4898323 pkt/s |  20063.53 MB/s (20.064 GB/s) | crc_err=0 | seq_gap=0
+[consumer] done: total=51172836 packets, 209603.9 MB payload, crc_err=0, seq_gap=0
