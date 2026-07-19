@@ -1,0 +1,135 @@
+// Consumer: receives packets from the producer via a shared-memory SPSC
+// ring, validates CRC32C and sequence-number continuity, and reports once
+// per second: total packets, packets/s, bytes/s.
+//
+// Usage: consumer [shm_name]
+//
+// Pause/resume: SIGUSR1 or any key. Quit: 'q', Ctrl+C or SIGTERM.
+// While the consumer is paused it stops draining the ring; the ring fills
+// up and the producer blocks on backpressure. No data is lost — after
+// resume the stream continues from the same sequence number.
+
+#include <cinttypes>
+#include <cstdio>
+#include <string>
+
+#include "control.hpp"
+#include "crc32c.hpp"
+#include "ring_buffer.hpp"
+
+namespace {
+
+struct Stats {
+    uint64_t total_packets = 0;
+    uint64_t total_bytes = 0;
+    uint64_t crc_errors = 0;
+    uint64_t seq_gaps = 0;
+    uint64_t window_packets = 0;
+    uint64_t window_bytes = 0;
+    uint64_t last_report_ns = 0;
+
+    void report_if_due(uint64_t now) {
+        if (now - last_report_ns < 1'000'000'000ull) return;
+        const double dt = (now - last_report_ns) * 1e-9;
+        const double pps = static_cast<double>(window_packets) / dt;
+        const double bps = static_cast<double>(window_bytes) / dt;
+        std::fprintf(stderr,
+                     "[consumer] total=%12" PRIu64 " | %11.0f pkt/s | %9.2f MB/s"
+                     " (%6.3f GB/s) | crc_err=%" PRIu64 " | seq_gap=%" PRIu64 "%s\n",
+                     total_packets, pps, bps / 1e6, bps / 1e9, crc_errors,
+                     seq_gaps, ipc::g_pause ? " [PAUSED]" : "");
+        window_packets = 0;
+        window_bytes = 0;
+        last_report_ns = now;
+    }
+};
+
+}  // namespace
+
+int main(int argc, char** argv) {
+    const std::string shm_name = argc > 1 ? argv[1] : "/pkt_ring";
+
+    ipc::install_signal_handlers();
+    ipc::RawTerminal term;
+
+    std::fprintf(stderr,
+                 "[consumer] waiting for producer on '%s', pid %d\n"
+                 "[consumer] SIGUSR1 or any key: pause/resume, 'q' or Ctrl+C: quit\n",
+                 shm_name.c_str(), getpid());
+    ipc::SpscRing ring = [&] {
+        try {
+            return ipc::SpscRing::open(shm_name, &ipc::g_stop);
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "[consumer] %s\n", e.what());
+            std::exit(1);
+        }
+    }();
+
+    Stats stats;
+    stats.last_report_ns = ipc::now_ns();
+    uint64_t expected_seq = 0;
+    bool have_seq = false;
+    bool announced_pause = false;
+    ipc::Backoff backoff;
+    uint64_t iter = 0;
+
+    while (!ipc::g_stop) {
+        // Keyboard/clock checks are amortized: every 1024 packets on the hot
+        // path (at millions of packets/s that is sub-millisecond), and on
+        // every iteration when idle or paused.
+        if ((iter++ & 0x3FF) == 0) {
+            ipc::handle_key(term);
+            stats.report_if_due(ipc::now_ns());
+        }
+
+        if (ipc::g_pause) {
+            if (!announced_pause) {
+                std::fprintf(stderr,
+                             "[consumer] paused (ring will fill, producer will block)\n");
+                announced_pause = true;
+            }
+            ipc::handle_key(term);
+            stats.report_if_due(ipc::now_ns());
+            timespec ts{0, 20'000'000};
+            nanosleep(&ts, nullptr);
+            continue;
+        }
+        if (announced_pause) {
+            std::fprintf(stderr, "[consumer] resumed\n");
+            announced_pause = false;
+        }
+
+        const ipc::RecordHeader* hdr = ring.try_pop_begin();
+        if (!hdr) {
+            backoff.wait();
+            ipc::handle_key(term);
+            stats.report_if_due(ipc::now_ns());
+            continue;
+        }
+        backoff.reset();
+
+        const uint8_t* payload =
+            reinterpret_cast<const uint8_t*>(hdr) + sizeof(ipc::RecordHeader);
+        if (ipc::crc32c(payload, hdr->payload_size) != hdr->crc) {
+            ++stats.crc_errors;
+        }
+        if (have_seq && hdr->seq != expected_seq) {
+            ++stats.seq_gaps;
+        }
+        expected_seq = hdr->seq + 1;
+        have_seq = true;
+
+        ++stats.total_packets;
+        ++stats.window_packets;
+        stats.total_bytes += hdr->payload_size;
+        stats.window_bytes += hdr->payload_size;
+        ring.pop_end();
+    }
+
+    std::fprintf(stderr,
+                 "[consumer] done: total=%" PRIu64 " packets, %.1f MB payload,"
+                 " crc_err=%" PRIu64 ", seq_gap=%" PRIu64 "\n",
+                 stats.total_packets, static_cast<double>(stats.total_bytes) / 1e6,
+                 stats.crc_errors, stats.seq_gaps);
+    return 0;
+}
