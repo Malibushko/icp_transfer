@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(wsl.exe -e sh -c 'cd /mnt/c/Users/yehor.tsyba/Downloads/task && git init -b main && git config user.name \"Yehor Tsyba\" && git config user.email \"yehor.tsyba@gameloft.com\" && git config core.autocrlf false && git add -A && git commit -q -m \"build: project skeleton \\(CMake, C++20, producer/consumer targets\\) *)"
-    ]
-  }
-}
