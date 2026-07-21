@@ -3,7 +3,6 @@
 #include <atomic>
 #include <cerrno>
 #include <csignal>
-#include <cstdint>
 #include <cstring>
 #include <new>
 #include <stdexcept>
@@ -13,7 +12,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <time.h>
+#include <ctime>
 #include <unistd.h>
 
 #include "protocol.hpp"
@@ -143,9 +142,9 @@ public:
         return r;
     }
 
-    size_t capacity() const { return capacity_; }
+    [[nodiscard]] size_t capacity() const { return capacity_; }
 
-    size_t max_record_size() const { return capacity_ / 2; }
+    [[nodiscard]] size_t max_record_size() const { return capacity_ / 2; }
 
     bool try_push(const RecordHeader& hdr, const void* payload) {
         const size_t rec = record_size(hdr.payload_size);

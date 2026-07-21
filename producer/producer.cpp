@@ -7,8 +7,12 @@
 #include <random>
 #include <vector>
 
+#include "backoff.hpp"
+#include "clock.hpp"
+#include "control.hpp"
 #include "logging.hpp"
 #include "protocol.hpp"
+#include "terminal.hpp"
 
 #include <crc32c/crc32c.h>
 
@@ -17,8 +21,10 @@ namespace producer {
 namespace {
 
 std::vector<uint8_t> make_payload(size_t size) {
+    static std::random_device rd;
+
     std::vector<uint8_t> payload(size);
-    std::mt19937_64 rng(0xC0FFEE);
+    std::mt19937_64 rng(rd());
     for (auto& b : payload) {
         b = static_cast<uint8_t>(rng());
     }

@@ -7,6 +7,7 @@
 #include "control.hpp"
 #include "ipc_ring_buffer.hpp"
 #include "logging.hpp"
+#include "terminal.hpp"
 
 namespace consumer {
 

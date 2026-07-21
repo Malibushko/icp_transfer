@@ -20,7 +20,7 @@ struct Stats {
 namespace detail {
 
 inline void log_throughput(const Stats& s, uint64_t now) {
-    const double dt = (now - s.last_report_ns) * 1e-9;
+    const double dt = static_cast<double>(now - s.last_report_ns) * 1e-9;
     const double pps = static_cast<double>(s.window_packets) / dt;
     const double bps = static_cast<double>(s.window_bytes) / dt;
     spdlog::info(

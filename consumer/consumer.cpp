@@ -1,10 +1,12 @@
 #include "consumer.hpp"
 
-#include <cstdint>
-
+#include "backoff.hpp"
+#include "clock.hpp"
+#include "control.hpp"
 #include "logging.hpp"
 #include "protocol.hpp"
 #include "stats.hpp"
+#include "terminal.hpp"
 
 #include <crc32c/crc32c.h>
 

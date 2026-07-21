@@ -3,6 +3,7 @@
 #include "ipc_ring_buffer.hpp"
 #include "logging.hpp"
 #include "producer.hpp"
+#include "terminal.hpp"
 
 int main(int argc, char** argv) {
     ipc::init_logging("producer");

@@ -4,10 +4,10 @@
 #include <cstdlib>
 #include <string>
 
-#include "control.hpp"
 #include "ipc_ring_buffer.hpp"
 #include "logging.hpp"
 #include "protocol.hpp"
+#include "terminal.hpp"
 
 namespace producer {
 
