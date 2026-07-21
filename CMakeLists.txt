@@ -12,23 +12,23 @@ find_package(spdlog REQUIRED)
 find_package(Threads REQUIRED)
 
 add_executable(producer
-        producer/main.cpp
-        producer/producer.cpp
+        src/source/producer/main.cpp
+        src/source/producer/producer.cpp
 )
-target_include_directories(producer PRIVATE ${PROJECT_SOURCE_DIR}/producer)
+target_include_directories(producer PRIVATE ${PROJECT_SOURCE_DIR}/src/include/producer)
 
 add_executable(consumer
-        consumer/main.cpp
-        consumer/consumer.cpp
+        src/source/consumer/main.cpp
+        src/source/consumer/consumer.cpp
 )
-target_include_directories(consumer PRIVATE ${PROJECT_SOURCE_DIR}/consumer)
+target_include_directories(consumer PRIVATE ${PROJECT_SOURCE_DIR}/src/include/consumer)
 
 function(setup_target target)
     target_compile_features(${target} PRIVATE cxx_std_20)
 
     target_include_directories(${target}
             PRIVATE
-            ${PROJECT_SOURCE_DIR}/common
+            ${PROJECT_SOURCE_DIR}/src/include/common
     )
 
     target_compile_options(${target}
