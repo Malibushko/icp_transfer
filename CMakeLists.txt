@@ -6,6 +6,7 @@ project(
         LANGUAGES CXX
 )
 
+find_package(CLI11 REQUIRED)
 find_package(Crc32c REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(Threads REQUIRED)
@@ -36,6 +37,7 @@ function(setup_target target)
 
     target_link_libraries(${target}
             PRIVATE
+            CLI11::CLI11
             Crc32c::crc32c
             spdlog::spdlog
             Threads::Threads

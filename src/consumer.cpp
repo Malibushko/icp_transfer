@@ -4,6 +4,7 @@
 #include "logging.hpp"
 #include "ipc_ring_buffer.hpp"
 
+#include <CLI/CLI.hpp>
 #include <crc32c/crc32c.h>
 
 namespace {
@@ -36,9 +37,14 @@ struct Stats {
 }
 
 int main(int argc, char** argv) {
-    const std::string shm_name = argc > 1 ? argv[1] : "/pkt_ring";
-
     ipc::init_logging("consumer");
+
+    CLI::App app{"IPC ring buffer consumer"};
+    std::string shm_name = "/pkt_ring";
+    app.add_option("shm_name", shm_name, "shared memory name")
+        ->capture_default_str();
+    CLI11_PARSE(app, argc, argv);
+
     ipc::install_signal_handlers();
     ipc::RawTerminal term;
 

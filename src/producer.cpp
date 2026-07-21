@@ -1,6 +1,4 @@
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <random>
 #include <string>
@@ -11,48 +9,33 @@
 #include "protocol.hpp"
 #include "ipc_ring_buffer.hpp"
 
+#include <CLI/CLI.hpp>
 #include <crc32c/crc32c.h>
-
-namespace {
-
-void usage(const char* argv0) {
-    std::fprintf(stderr,
-                 "Usage: %s <payload_bytes> [shm_name] [ring_mib]\n"
-                 "  payload_bytes  payload size of each packet (>= 1)\n"
-                 "  shm_name       shared memory name (default /pkt_ring)\n"
-                 "  ring_mib       ring capacity in MiB, power of two (default 64)\n",
-                 argv0);
-}
-
-uint64_t parse_u64(const char* s, const char* what) {
-    char* end = nullptr;
-    errno = 0;
-    const unsigned long long v = std::strtoull(s, &end, 10);
-    if (errno != 0 || end == s || *end != '\0') {
-        spdlog::error("invalid {}: '{}'", what, s);
-        std::exit(2);
-    }
-    return v;
-}
-
-}
 
 int main(int argc, char** argv) {
     ipc::init_logging("producer");
 
-    if (argc < 2 || argc > 4) {
-        usage(argv[0]);
-        return 2;
-    }
-    const size_t payload_size = parse_u64(argv[1], "payload size");
-    const std::string shm_name = argc > 2 ? argv[2] : "/pkt_ring";
-    const size_t ring_mib = argc > 3 ? parse_u64(argv[3], "ring size") : 64;
-    const size_t capacity = ring_mib * 1024 * 1024;
+    CLI::App app{"IPC ring buffer producer"};
+    size_t payload_size = 0;
+    std::string shm_name = "/pkt_ring";
+    size_t ring_mib = 64;
+    app.add_option("payload_bytes", payload_size, "payload size of each packet (>= 1)")
+        ->required();
+    app.add_option("shm_name", shm_name, "shared memory name")
+        ->capture_default_str();
+    app.add_option("ring_mib", ring_mib, "ring capacity in MiB, power of two")
+        ->capture_default_str();
+    CLI11_PARSE(app, argc, argv);
 
     if (payload_size < 1) {
-        spdlog::error("payload size must be >= 1");
+        spdlog::error("payload_bytes must be >= 1");
         return 2;
     }
+    if (ring_mib == 0 || (ring_mib & (ring_mib - 1)) != 0) {
+        spdlog::error("ring_mib must be a power of two");
+        return 2;
+    }
+    const size_t capacity = ring_mib * 1024 * 1024;
 
     ipc::install_signal_handlers();
     ipc::RawTerminal term;
