@@ -3,7 +3,14 @@ BUILD=${1:-build}
 SECS=${2:-6}
 cd "$(dirname "$0")/.." || exit 1
 
-command -v taskset >/dev/null && PIN_P="taskset -c 2" PIN_C="taskset -c 4" || PIN_P="" PIN_C=""
+NPROC=$(nproc 2>/dev/null || echo 1)
+if command -v taskset >/dev/null 2>&1 && [ "$NPROC" -ge 5 ]; then
+    PIN_P="taskset -c 2"; PIN_C="taskset -c 4"
+elif command -v taskset >/dev/null 2>&1 && [ "$NPROC" -ge 2 ]; then
+    PIN_P="taskset -c 0"; PIN_C="taskset -c 1"
+else
+    PIN_P=""; PIN_C=""
+fi
 
 printf "%10s %10s | %14s %12s\n" "payload_B" "ring_MiB" "peak_pkt/s" "peak_MB/s"
 for ring in 8 64 256; do

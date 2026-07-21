@@ -77,6 +77,53 @@ jobs:
       - name: Smoke test
         run: bash scripts/ci_smoke_test.sh build
 
+  benchmark:
+    name: Benchmark
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Conan
+        run: pip install 'conan>=2.0,<3'
+
+      - name: Detect Conan profile
+        run: conan profile detect --force
+
+      - name: Build (Release)
+        run: |
+          conan install . --output-folder=build --build=missing -s build_type=Release -c tools.cmake.cmaketoolchain:generator=Ninja
+          cmake -S . -B build -G Ninja -DCMAKE_TOOLCHAIN_FILE=build/conan_toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Run benchmark
+        run: |
+          {
+            echo "# ipc-packets benchmark"
+            echo "# commit: ${{ github.sha }}"
+            echo "# date:   $(date -u +%FT%TZ)"
+            echo "# runner: $(nproc) cores - $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ *//')"
+            echo
+            bash scripts/bench.sh build
+          } | tee bench-results.txt
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: bench-results.txt
+          retention-days: 30
+
   release:
     name: Release binaries
     needs: build
