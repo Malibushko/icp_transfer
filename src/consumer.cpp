@@ -1,21 +1,11 @@
-// Consumer: receives packets from the producer via a shared-memory SPSC
-// ring, validates CRC32C and sequence-number continuity, and reports once
-// per second: total packets, packets/s, bytes/s.
-//
-// Usage: consumer [shm_name]
-//
-// Pause/resume: SIGUSR1 or any key. Quit: 'q', Ctrl+C or SIGTERM.
-// While the consumer is paused it stops draining the ring; the ring fills
-// up and the producer blocks on backpressure. No data is lost — after
-// resume the stream continues from the same sequence number.
-
 #include <cinttypes>
 #include <cstdio>
 #include <string>
 
 #include "control.hpp"
-#include "crc32c.hpp"
-#include "ring_buffer.hpp"
+#include "ipc_ring_buffer.hpp"
+
+#include <crc32c/crc32c.h>
 
 namespace {
 
@@ -74,9 +64,6 @@ int main(int argc, char** argv) {
     uint64_t iter = 0;
 
     while (!ipc::g_stop) {
-        // Keyboard/clock checks are amortized: every 1024 packets on the hot
-        // path (at millions of packets/s that is sub-millisecond), and on
-        // every iteration when idle or paused.
         if ((iter++ & 0x3FF) == 0) {
             ipc::handle_key(term);
             stats.report_if_due(ipc::now_ns());
@@ -110,7 +97,7 @@ int main(int argc, char** argv) {
 
         const uint8_t* payload =
             reinterpret_cast<const uint8_t*>(hdr) + sizeof(ipc::RecordHeader);
-        if (ipc::crc32c(payload, hdr->payload_size) != hdr->crc) {
+        if (crc32c::Crc32c(payload, hdr->payload_size) != hdr->crc) {
             ++stats.crc_errors;
         }
         if (have_seq && hdr->seq != expected_seq) {

@@ -1,12 +1,5 @@
 #pragma once
 
-// Runtime control shared by both applications:
-//  - SIGUSR1 toggles pause/resume, SIGINT/SIGTERM request shutdown;
-//  - any key toggles pause/resume, 'q' quits (terminal is switched to
-//    non-canonical mode, restored on exit);
-//  - Backoff: spin -> yield -> sleep progression for wait loops;
-//  - now_ns(): monotonic clock helper.
-
 #include <csignal>
 #include <cstdint>
 
@@ -47,9 +40,6 @@ inline void cpu_relax() {
 #endif
 }
 
-// Progressive backoff for busy-wait loops: stay on the CPU while the wait is
-// short (latency), fall back to yield and then to a 100us sleep so a long
-// wait (peer paused or dead) does not burn a core.
 struct Backoff {
     unsigned n = 0;
     void reset() { n = 0; }
@@ -66,9 +56,6 @@ struct Backoff {
     }
 };
 
-// Puts the controlling terminal into non-canonical, non-echo mode so single
-// keypresses can be read without Enter. No-op when stdin is not a TTY
-// (e.g. when output is piped in a benchmark script).
 class RawTerminal {
 public:
     RawTerminal() {
@@ -102,7 +89,6 @@ private:
     bool active_ = false;
 };
 
-// 'q' quits, any other key toggles pause/resume.
 inline void handle_key(const RawTerminal& term) {
     const int key = term.poll_key();
     if (key < 0) return;

@@ -1,13 +1,3 @@
-// Producer: generates packets of a given payload size, adds metadata
-// (sequence number, monotonic timestamp, CRC32C) and pushes them into a
-// shared-memory SPSC ring for the consumer process.
-//
-// Usage: producer <payload_bytes> [shm_name] [ring_mib]
-//
-// Pause/resume: SIGUSR1 or any key. Quit: 'q', Ctrl+C or SIGTERM.
-// When the ring is full (consumer paused or slower), the producer applies
-// backpressure: it waits for free space, no packet is ever dropped.
-
 #include <algorithm>
 #include <cinttypes>
 #include <cstdio>
@@ -18,8 +8,10 @@
 #include <vector>
 
 #include "control.hpp"
-#include "crc32c.hpp"
-#include "ring_buffer.hpp"
+#include "protocol.hpp"
+#include "ipc_ring_buffer.hpp"
+
+#include <crc32c/crc32c.h>
 
 namespace {
 
@@ -75,10 +67,6 @@ int main(int argc, char** argv) {
                  "[producer] SIGUSR1 or any key: pause/resume, 'q' or Ctrl+C: quit\n",
                  shm_name.c_str(), ring_mib, payload_size, getpid());
 
-    // Payload template: random bytes generated once. Generating fresh random
-    // data per packet would benchmark the RNG, not the transport. The
-    // sequence number is stamped into the head of the payload so both the
-    // content and the CRC differ from packet to packet.
     std::vector<uint8_t> payload(payload_size);
     std::mt19937_64 rng(0xC0FFEE);
     for (auto& b : payload) b = static_cast<uint8_t>(rng());
@@ -112,11 +100,8 @@ int main(int argc, char** argv) {
         hdr.payload_size = static_cast<uint32_t>(payload_size);
         hdr.seq = seq;
         hdr.timestamp_ns = ipc::now_ns();
-        hdr.crc = ipc::crc32c(payload.data(), payload_size);
+        hdr.crc = crc32c::Crc32c(payload.data(), payload_size);
 
-        // Backpressure: if the ring is full, wait for the consumer. A pause
-        // or stop request interrupts the wait; the packet is retried with
-        // the same seq after resume, so nothing is lost or duplicated.
         backoff.reset();
         bool pushed = ring.try_push(hdr, payload.data());
         while (!pushed && !ipc::g_stop && !ipc::g_pause) {

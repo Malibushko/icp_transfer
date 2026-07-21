@@ -1,6 +1,4 @@
 #!/bin/sh
-# Sweep payload sizes and ring capacities, print peak per-second consumer
-# stats for each combination. Usage: scripts/bench.sh [build_dir] [secs]
 BUILD=${1:-build}
 SECS=${2:-6}
 cd "$(dirname "$0")/.." || exit 1

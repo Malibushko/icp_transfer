@@ -5,14 +5,6 @@
 
 namespace ipc {
 
-// Wire format of one packet inside the ring: RecordHeader immediately
-// followed by `payload_size` bytes of payload, the whole record padded to
-// 8-byte alignment.
-//
-// `payload_size` is deliberately the first field: the consumer reads it to
-// frame the record, and the special value kWrapMarker in its place tells the
-// consumer that the rest of the ring up to the wrap point is padding and the
-// next record starts at offset 0.
 struct RecordHeader {
     uint32_t payload_size;
     uint32_t crc;           // CRC32C of the payload
