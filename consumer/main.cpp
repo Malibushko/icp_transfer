@@ -12,9 +12,9 @@ int main(int argc, char** argv) {
     const std::string shm_name = consumer::parse_args(argc, argv);
 
     ipc::install_signal_handlers();
+    ipc::RingBuffer ring = consumer::open_ring(shm_name);
     ipc::RawTerminal terminal;
 
-    ipc::RingBuffer ring = consumer::open_ring(shm_name);
     consumer::run_consumer_loop(ring, terminal);
     return 0;
 }

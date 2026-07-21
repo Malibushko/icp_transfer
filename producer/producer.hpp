@@ -20,13 +20,17 @@ struct Options {
 };
 
 inline ipc::RingBuffer create_ring(const Options& opt) {
-    ipc::RingBuffer ring = ipc::RingBuffer::create(opt.shm_name, opt.ring_mib * kMiB);
-    if (ipc::record_size(opt.payload_size) > ring.max_record_size()) {
-        spdlog::error("payload too large for a {} MiB ring (max ~{} bytes)",
-                      opt.ring_mib, ring.max_record_size() - sizeof(ipc::RecordHeader));
+    const size_t capacity = opt.ring_mib * kMiB;
+    if (opt.payload_size >= ipc::kWrapMarker) {
+        spdlog::error("payload_bytes must be < {}", ipc::kWrapMarker);
         std::exit(2);
     }
-    return ring;
+    if (ipc::record_size(opt.payload_size) > capacity / 2) {
+        spdlog::error("payload too large for a {} MiB ring (max ~{} bytes)",
+                      opt.ring_mib, capacity / 2 - sizeof(ipc::RecordHeader));
+        std::exit(2);
+    }
+    return ipc::RingBuffer::create(opt.shm_name, capacity);
 }
 
 void run_producer_loop(ipc::RingBuffer& ring, const ipc::RawTerminal& term, const Options& opt);

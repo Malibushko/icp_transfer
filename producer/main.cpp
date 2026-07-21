@@ -10,8 +10,8 @@ int main(int argc, char** argv) {
     const producer::Options opt = producer::parse_args(argc, argv);
 
     ipc::install_signal_handlers();
-    ipc::RawTerminal term;
     ipc::RingBuffer ring = producer::create_ring(opt);
+    ipc::RawTerminal term;
 
     producer::run_producer_loop(ring, term, opt);
     return 0;
