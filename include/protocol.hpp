@@ -7,9 +7,9 @@ namespace ipc {
 
 struct RecordHeader {
     uint32_t payload_size;
-    uint32_t crc;           // CRC32C of the payload
-    uint64_t seq;           // monotonic sequence number, starts at 0
-    uint64_t timestamp_ns;  // CLOCK_MONOTONIC at production time
+    uint32_t crc;
+    uint64_t seq;
+    uint64_t timestamp_ns;
 };
 static_assert(sizeof(RecordHeader) == 24);
 static_assert(alignof(RecordHeader) == 8);
@@ -24,4 +24,4 @@ constexpr size_t record_size(size_t payload_size) {
     return align8(sizeof(RecordHeader) + payload_size);
 }
 
-}  // namespace ipc
+}

@@ -73,7 +73,6 @@ public:
     RawTerminal(const RawTerminal&) = delete;
     RawTerminal& operator=(const RawTerminal&) = delete;
 
-    // Non-blocking: returns the pressed key or -1.
     int poll_key() const {
         if (!active_) return -1;
         pollfd pfd{STDIN_FILENO, POLLIN, 0};
@@ -99,4 +98,4 @@ inline void handle_key(const RawTerminal& term) {
     }
 }
 
-}  // namespace ipc
+}

@@ -1,8 +1,7 @@
-#include <cinttypes>
-#include <cstdio>
 #include <string>
 
 #include "control.hpp"
+#include "logging.hpp"
 #include "ipc_ring_buffer.hpp"
 
 #include <crc32c/crc32c.h>
@@ -23,34 +22,33 @@ struct Stats {
         const double dt = (now - last_report_ns) * 1e-9;
         const double pps = static_cast<double>(window_packets) / dt;
         const double bps = static_cast<double>(window_bytes) / dt;
-        std::fprintf(stderr,
-                     "[consumer] total=%12" PRIu64 " | %11.0f pkt/s | %9.2f MB/s"
-                     " (%6.3f GB/s) | crc_err=%" PRIu64 " | seq_gap=%" PRIu64 "%s\n",
-                     total_packets, pps, bps / 1e6, bps / 1e9, crc_errors,
-                     seq_gaps, ipc::g_pause ? " [PAUSED]" : "");
+        spdlog::info(
+            "total={:12} | {:11.0f} pkt/s | {:9.2f} MB/s ({:6.3f} GB/s)"
+            " | crc_err={} | seq_gap={}{}",
+            total_packets, pps, bps / 1e6, bps / 1e9, crc_errors, seq_gaps,
+            ipc::g_pause ? " [PAUSED]" : "");
         window_packets = 0;
         window_bytes = 0;
         last_report_ns = now;
     }
 };
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
     const std::string shm_name = argc > 1 ? argv[1] : "/pkt_ring";
 
+    ipc::init_logging("consumer");
     ipc::install_signal_handlers();
     ipc::RawTerminal term;
 
-    std::fprintf(stderr,
-                 "[consumer] waiting for producer on '%s', pid %d\n"
-                 "[consumer] SIGUSR1 or any key: pause/resume, 'q' or Ctrl+C: quit\n",
-                 shm_name.c_str(), getpid());
-    ipc::SpscRing ring = [&] {
+    spdlog::info("waiting for producer on '{}', pid {}", shm_name, getpid());
+    spdlog::info("SIGUSR1 or any key: pause/resume, 'q' or Ctrl+C: quit");
+    ipc::RingBuffer ring = [&] {
         try {
-            return ipc::SpscRing::open(shm_name, &ipc::g_stop);
+            return ipc::RingBuffer::open(shm_name, &ipc::g_stop);
         } catch (const std::exception& e) {
-            std::fprintf(stderr, "[consumer] %s\n", e.what());
+            spdlog::critical("{}", e.what());
             std::exit(1);
         }
     }();
@@ -71,8 +69,7 @@ int main(int argc, char** argv) {
 
         if (ipc::g_pause) {
             if (!announced_pause) {
-                std::fprintf(stderr,
-                             "[consumer] paused (ring will fill, producer will block)\n");
+                spdlog::warn("paused (ring will fill, producer will block)");
                 announced_pause = true;
             }
             ipc::handle_key(term);
@@ -82,7 +79,7 @@ int main(int argc, char** argv) {
             continue;
         }
         if (announced_pause) {
-            std::fprintf(stderr, "[consumer] resumed\n");
+            spdlog::info("resumed");
             announced_pause = false;
         }
 
@@ -113,9 +110,7 @@ int main(int argc, char** argv) {
         ring.pop_end();
     }
 
-    std::fprintf(stderr,
-                 "[consumer] done: total=%" PRIu64 " packets, %.1f MB payload,"
-                 " crc_err=%" PRIu64 ", seq_gap=%" PRIu64 "\n",
+    spdlog::info("done: total={} packets, {:.1f} MB payload, crc_err={}, seq_gap={}",
                  stats.total_packets, static_cast<double>(stats.total_bytes) / 1e6,
                  stats.crc_errors, stats.seq_gaps);
     return 0;

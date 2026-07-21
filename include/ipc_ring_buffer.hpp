@@ -1,25 +1,5 @@
 #pragma once
 
-// Lock-free single-producer/single-consumer ring buffer over POSIX shared
-// memory (shm_open + mmap). No syscalls on the hot path: the producer and
-// the consumer synchronize purely through two atomic indices.
-//
-// Design notes:
-//  - head/tail are monotonically increasing 64-bit counters, never wrapped;
-//    the position in the buffer is (index & mask). This removes the classic
-//    "full vs empty" ambiguity and makes used/free space a plain subtraction.
-//  - head and tail live on separate cache lines to avoid false sharing.
-//  - Each side keeps a cached copy of the other side's index and re-reads
-//    the shared atomic only when the cached value is not enough to proceed.
-//    This keeps the hot path free of cache-line ping-pong.
-//  - Records are always contiguous. If a record does not fit before the end
-//    of the buffer, the producer writes kWrapMarker into the size field and
-//    the record starts at offset 0. Since every record size is a multiple
-//    of 8, there are always at least 4 bytes for the marker.
-//  - The producer publishes a record with a release store to head; the
-//    consumer acquires it and reads the payload in place (zero copy on the
-//    consuming side). Symmetrically for tail.
-
 #include <atomic>
 #include <cerrno>
 #include <csignal>
@@ -40,25 +20,25 @@
 
 namespace ipc {
 
-class SpscRing {
-    static constexpr uint32_t kMagic = 0x50414B52;  // "PAKR"
-    static constexpr size_t kDataOffset = 4096;     // control block page
+class RingBuffer {
+    static constexpr uint32_t kMagic = 0x50414B52;
+    static constexpr size_t kDataOffset = 4096;
 
     struct ControlBlock {
         uint32_t magic;
         uint64_t capacity;
         std::atomic<uint32_t> ready;
-        alignas(64) std::atomic<uint64_t> head;  // written by producer only
-        alignas(64) std::atomic<uint64_t> tail;  // written by consumer only
+        alignas(64) std::atomic<uint64_t> head;
+        alignas(64) std::atomic<uint64_t> tail;
     };
     static_assert(sizeof(ControlBlock) <= kDataOffset);
 
 public:
-    SpscRing(const SpscRing&) = delete;
-    SpscRing& operator=(const SpscRing&) = delete;
+    RingBuffer(const RingBuffer&) = delete;
+    RingBuffer& operator=(const RingBuffer&) = delete;
 
-    SpscRing(SpscRing&& other) noexcept { *this = std::move(other); }
-    SpscRing& operator=(SpscRing&& other) noexcept {
+    RingBuffer(RingBuffer&& other) noexcept { *this = std::move(other); }
+    RingBuffer& operator=(RingBuffer&& other) noexcept {
         if (this != &other) {
             close();
             cb_ = other.cb_;
@@ -77,11 +57,9 @@ public:
         return *this;
     }
 
-    ~SpscRing() { close(); }
+    ~RingBuffer() { close(); }
 
-    // Producer side: creates the segment, removing a stale one if a previous
-    // run crashed. `capacity` must be a power of two.
-    static SpscRing create(const std::string& name, size_t capacity) {
+    static RingBuffer create(const std::string& name, size_t capacity) {
         if (capacity == 0 || (capacity & (capacity - 1)) != 0) {
             throw std::invalid_argument("ring capacity must be a power of two");
         }
@@ -104,7 +82,7 @@ public:
             throw std::system_error(errno, std::generic_category(), "mmap");
         }
 
-        SpscRing r;
+        RingBuffer r;
         r.cb_ = new (mem) ControlBlock{};
         r.data_ = static_cast<uint8_t*>(mem) + kDataOffset;
         r.capacity_ = capacity;
@@ -113,7 +91,6 @@ public:
         r.name_ = name;
         r.owner_ = true;
 
-        // Pre-fault all pages so the benchmark does not measure page faults.
         std::memset(r.data_, 0, capacity);
 
         r.cb_->magic = kMagic;
@@ -122,9 +99,7 @@ public:
         return r;
     }
 
-    // Consumer side: waits until the producer has created and initialized
-    // the segment. `stop` aborts the wait (e.g. on SIGINT).
-    static SpscRing open(const std::string& name,
+    static RingBuffer open(const std::string& name,
                          const volatile std::sig_atomic_t* stop = nullptr) {
         int fd = -1;
         size_t total = 0;
@@ -150,7 +125,7 @@ public:
             throw std::system_error(errno, std::generic_category(), "mmap");
         }
 
-        SpscRing r;
+        RingBuffer r;
         r.cb_ = static_cast<ControlBlock*>(mem);
         r.map_len_ = total;
         r.name_ = name;
@@ -170,14 +145,8 @@ public:
 
     size_t capacity() const { return capacity_; }
 
-    // The worst-case wrap wastes just under one record of space, so a record
-    // may need up to ~2x its size of free room; capacity/2 is always safe.
     size_t max_record_size() const { return capacity_ / 2; }
 
-    // ---- producer side ----------------------------------------------------
-
-    // Copies header + payload into the ring. Returns false if there is not
-    // enough free space (the caller decides how to wait).
     bool try_push(const RecordHeader& hdr, const void* payload) {
         const size_t rec = record_size(hdr.payload_size);
         uint64_t head = cb_->head.load(std::memory_order_relaxed);
@@ -204,10 +173,6 @@ public:
         return true;
     }
 
-    // ---- consumer side ----------------------------------------------------
-
-    // Returns the next record, or nullptr if the ring is empty. The record
-    // (header + payload) is valid in place until pop_end() is called.
     const RecordHeader* try_pop_begin() {
         for (;;) {
             const uint64_t tail = cb_->tail.load(std::memory_order_relaxed);
@@ -227,14 +192,13 @@ public:
         }
     }
 
-    // Releases the record returned by the last try_pop_begin().
     void pop_end() {
         cb_->tail.store(cb_->tail.load(std::memory_order_relaxed) + pending_,
                         std::memory_order_release);
     }
 
 private:
-    SpscRing() = default;
+    RingBuffer() = default;
 
     void close() {
         if (cb_) {
@@ -257,9 +221,9 @@ private:
     std::string name_;
     bool owner_ = false;
 
-    uint64_t cached_tail_ = 0;  // producer's cache of tail
-    uint64_t cached_head_ = 0;  // consumer's cache of head
-    size_t pending_ = 0;        // consumer: size of the record being read
+    uint64_t cached_tail_ = 0;
+    uint64_t cached_head_ = 0;
+    size_t pending_ = 0;
 };
 
-}  // namespace ipc
+}

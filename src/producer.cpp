@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -8,6 +7,7 @@
 #include <vector>
 
 #include "control.hpp"
+#include "logging.hpp"
 #include "protocol.hpp"
 #include "ipc_ring_buffer.hpp"
 
@@ -29,15 +29,17 @@ uint64_t parse_u64(const char* s, const char* what) {
     errno = 0;
     const unsigned long long v = std::strtoull(s, &end, 10);
     if (errno != 0 || end == s || *end != '\0') {
-        std::fprintf(stderr, "invalid %s: '%s'\n", what, s);
+        spdlog::error("invalid {}: '{}'", what, s);
         std::exit(2);
     }
     return v;
 }
 
-}  // namespace
+}
 
 int main(int argc, char** argv) {
+    ipc::init_logging("producer");
+
     if (argc < 2 || argc > 4) {
         usage(argv[0]);
         return 2;
@@ -48,24 +50,23 @@ int main(int argc, char** argv) {
     const size_t capacity = ring_mib * 1024 * 1024;
 
     if (payload_size < 1) {
-        std::fprintf(stderr, "payload size must be >= 1\n");
+        spdlog::error("payload size must be >= 1");
         return 2;
     }
 
     ipc::install_signal_handlers();
     ipc::RawTerminal term;
 
-    ipc::SpscRing ring = ipc::SpscRing::create(shm_name, capacity);
+    ipc::RingBuffer ring = ipc::RingBuffer::create(shm_name, capacity);
     if (ipc::record_size(payload_size) > ring.max_record_size()) {
-        std::fprintf(stderr, "payload too large for a %zu MiB ring (max ~%zu bytes)\n",
-                     ring_mib, ring.max_record_size() - sizeof(ipc::RecordHeader));
+        spdlog::error("payload too large for a {} MiB ring (max ~{} bytes)",
+                      ring_mib, ring.max_record_size() - sizeof(ipc::RecordHeader));
         return 2;
     }
 
-    std::fprintf(stderr,
-                 "[producer] ring '%s' (%zu MiB), payload %zu B, pid %d\n"
-                 "[producer] SIGUSR1 or any key: pause/resume, 'q' or Ctrl+C: quit\n",
-                 shm_name.c_str(), ring_mib, payload_size, getpid());
+    spdlog::info("ring '{}' ({} MiB), payload {} B, pid {}",
+                 shm_name, ring_mib, payload_size, getpid());
+    spdlog::info("SIGUSR1 or any key: pause/resume, 'q' or Ctrl+C: quit");
 
     std::vector<uint8_t> payload(payload_size);
     std::mt19937_64 rng(0xC0FFEE);
@@ -81,7 +82,7 @@ int main(int argc, char** argv) {
 
         if (ipc::g_pause) {
             if (!announced_pause) {
-                std::fprintf(stderr, "[producer] paused at seq=%" PRIu64 "\n", seq);
+                spdlog::warn("paused at seq={}", seq);
                 announced_pause = true;
             }
             ipc::handle_key(term);
@@ -90,7 +91,7 @@ int main(int argc, char** argv) {
             continue;
         }
         if (announced_pause) {
-            std::fprintf(stderr, "[producer] resumed\n");
+            spdlog::info("resumed");
             announced_pause = false;
         }
 
@@ -113,8 +114,7 @@ int main(int argc, char** argv) {
     }
 
     const double secs = (ipc::now_ns() - start_ns) * 1e-9;
-    std::fprintf(stderr,
-                 "[producer] done: %" PRIu64 " packets, %.1f MB payload in %.1f s\n",
+    spdlog::info("done: {} packets, {:.1f} MB payload in {:.1f} s",
                  seq, seq * static_cast<double>(payload_size) / 1e6, secs);
     return 0;
 }

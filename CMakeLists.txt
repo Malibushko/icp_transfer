@@ -7,7 +7,7 @@ project(
 )
 
 find_package(Crc32c REQUIRED)
-find_package(jnk0le_ringbuffer REQUIRED)
+find_package(spdlog REQUIRED)
 find_package(Threads REQUIRED)
 
 add_executable(producer
@@ -37,6 +37,7 @@ function(setup_target target)
     target_link_libraries(${target}
             PRIVATE
             Crc32c::crc32c
+            spdlog::spdlog
             Threads::Threads
     )
 endfunction()
