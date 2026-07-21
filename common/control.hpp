@@ -73,7 +73,7 @@ public:
     RawTerminal(const RawTerminal&) = delete;
     RawTerminal& operator=(const RawTerminal&) = delete;
 
-    int poll_key() const {
+    [[nodiscard]] int poll_key() const {
         if (!active_) return -1;
         pollfd pfd{STDIN_FILENO, POLLIN, 0};
         if (poll(&pfd, 1, 0) > 0 && (pfd.revents & POLLIN)) {
